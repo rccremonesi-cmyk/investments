@@ -143,6 +143,9 @@ body.sb-open .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.
 .perf-table-wrap thead th:first-child{z-index:3;box-shadow:inset -1px -1px 0 var(--line)}
 .perf-scroll{max-height:320px;overflow:auto}
 .perf-empty{text-align:center;padding:56px 24px}
+.an-switch{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;background:var(--surface2);border-radius:999px;margin-bottom:20px}
+.an-switch .period-pill{border:0;background:transparent}
+.an-switch .period-pill.active{background:var(--accent);color:var(--on-accent)}
 #perfEditor>summary{cursor:pointer;list-style:none;display:flex;align-items:center}
 #perfEditor>summary::-webkit-details-marker{display:none}
 #perfEditor>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
@@ -544,6 +547,8 @@ body.sb-open .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.
         let marketSnapshots = {}; // { 'YYYY-MM-DD': { nomeInvestimento: valoreEUR } }
         let proventi = [];        // [{id,data,anno,nome,ticker,valuta,lordo,ritenuta,lordoEUR,ritenutaEUR}]
         let perfCharts = {};
+        let anCharts = {};
+        let analyticsView = 'cap'; // 'cap' = capitale investito, 'mkt' = valore attuale con guadagni
 
         // Caricamento dati da localStorage
         function loadData() {
@@ -1474,7 +1479,90 @@ function deleteInvestment(id) {
                 </div>
             `;
 
-            document.getElementById('analyticsContent').innerHTML = html;
+            // ---- Seconda vista: distribuzione a valore di mercato (capitale + guadagni)
+            const anYearEnd = currentYear === 'all' ? '9999-12-31' : currentYear + '-12-31';
+            let anSnap = perfSnapOnOrBefore(anYearEnd);
+            if (anSnap && currentYear !== 'all' && anSnap < currentYear + '-01-01') anSnap = null;
+            const anSnapMap = anSnap ? (marketSnapshots[anSnap] || {}) : null;
+            const mkt = Object.keys(byNome).map(nome => {
+                const p = byNome[nome];
+                const has = !!anSnapMap && anSnapMap[nome] != null;
+                return {
+                    k: nome, ticker: p.ultimo.ticker || '', tipo: p.ultimo.tipologia, settori: p.ultimo.settori || [],
+                    cap: p.capitale, val: has ? anSnapMap[nome] : p.capitale, stimato: !has
+                };
+            }).sort((a, b) => b.val - a.val);
+            const totCap = mkt.reduce((s, m) => s + m.cap, 0);
+            const totVal = mkt.reduce((s, m) => s + m.val, 0);
+            const totGain = totVal - totCap;
+            const nStimati = mkt.filter(m => m.stimato).length;
+            const anGroup = keyFn => {
+                const o = {};
+                mkt.forEach(m => keyFn(m).forEach(k => {
+                    o[k] = o[k] || { cap: 0, val: 0 };
+                    o[k].cap += m.cap; o[k].val += m.val;
+                }));
+                return Object.keys(o).map(k => ({ k: k, cap: o[k].cap, val: o[k].val })).sort((a, b) => b.val - a.val);
+            };
+            const mType = anGroup(m => [m.tipo]);
+            const mSector = anGroup(m => m.settori);
+            const anPP = d => (d > 0.00005 ? '+' : d < -0.00005 ? '−' : '') +
+                Math.abs(d * 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' pp';
+            const anW = (v, t) => t > 0 ? v / t : 0;
+            const anCmpTable = (title, first, rows, withNote) => {
+                let h = '<div class="card"><div class="card-header"><h6 class="mb-0">' + title + '</h6></div><div class="card-body p-0"><div class="table-responsive perf-table-wrap">' +
+                    '<table class="table perf-table mb-0"><thead><tr><th>' + first + '</th><th class="num">Capitale investito</th><th class="num">Peso investito</th>' +
+                    '<th class="num">Valore attuale</th><th class="num">Peso attuale</th><th class="num">Guadagno</th><th class="num">Rend. %</th><th class="num">Variazione peso</th></tr></thead><tbody>';
+                rows.forEach(r => {
+                    const wc = anW(r.cap, totCap), wv = anW(r.val, totVal), g = r.val - r.cap, d = wv - wc;
+                    h += '<tr><td><strong>' + perfEsc(r.k) + '</strong>' +
+                        (withNote ? '<div class="perf-note">' + perfEsc(r.ticker ? r.ticker + ' · ' : '') + perfEsc(r.tipo) + (r.stimato ? ' · valore non disponibile' : '') + '</div>' : '') + '</td>' +
+                        '<td class="num">' + perfMoney(r.cap) + '</td><td class="num">' + perfPct(wc).replace('+', '') + '</td>' +
+                        '<td class="num"><strong>' + perfMoney(r.val) + '</strong></td><td class="num"><strong>' + perfPct(wv).replace('+', '') + '</strong></td>' +
+                        '<td class="num ' + perfCls(g) + '">' + perfMoney(g, true) + '</td><td class="num ' + perfCls(g) + '">' + perfPct(r.cap > 0 ? g / r.cap : null) + '</td>' +
+                        '<td class="num ' + perfCls(d) + '">' + anPP(d) + '</td></tr>';
+                });
+                h += '</tbody></table></div></div></div>';
+                return h;
+            };
+
+            let mktHtml = '';
+            if (!anSnapMap || !mkt.length) {
+                mktHtml = '<div class="card"><div class="card-body perf-empty"><i class="fas fa-circle-info fa-2x mb-3 text-muted"></i>' +
+                    '<h5>Valori di mercato non disponibili' + (currentYear === 'all' ? '' : ' per il ' + currentYear) + '</h5>' +
+                    '<p class="text-muted">Per vedere la distribuzione comprensiva dei guadagni servono i valori di mercato delle posizioni.</p>' +
+                    '<button class="btn btn-primary" type="button" onclick="document.getElementById(\'performance-tab\').click()">Vai a Rendimenti</button></div></div>';
+            } else {
+                mktHtml += '<p class="perf-note mb-3">Pesi ricalcolati sul valore di mercato al <strong>' + perfDate(anSnap) + '</strong>: capitale investito + guadagni/perdite. ' +
+                    'La “variazione peso” indica di quanti punti percentuali è cambiato il peso di ogni voce rispetto a quanto hai investito.' +
+                    (nStimati ? ' ' + nStimati + ' posizion' + (nStimati === 1 ? 'e' : 'i') + ' senza valore di mercato a quella data: conteggiat' + (nStimati === 1 ? 'a' : 'e') + ' al capitale investito.' : '') + '</p>';
+                mktHtml += '<div class="row g-3 mb-3 perf-kpi">' +
+                    '<div class="col-6 col-xl-3"><div class="stat-card"><div class="stat-value">' + perfMoney(totVal) + '</div><div class="stat-label">Valore attuale</div><small>al ' + perfDate(anSnap) + '</small></div></div>' +
+                    '<div class="col-6 col-xl-3"><div class="stat-card"><div class="stat-value">' + perfMoney(totCap) + '</div><div class="stat-label">Capitale netto investito</div><small>' + mkt.length + ' posizioni aperte</small></div></div>' +
+                    '<div class="col-6 col-xl-3"><div class="stat-card ' + (totGain >= 0 ? 'border-success-soft' : 'border-danger-soft') + '"><div class="stat-value">' + perfMoney(totGain, true) + '</div><div class="stat-label">Guadagno / perdita</div><small>Valore attuale − capitale investito</small></div></div>' +
+                    '<div class="col-6 col-xl-3"><div class="stat-card ' + (totGain >= 0 ? 'border-success-soft' : 'border-danger-soft') + '"><div class="stat-value">' + perfPct(totCap > 0 ? totGain / totCap : null) + '</div><div class="stat-label">Rendimento sul capitale</div><small>Lordo, prima delle tasse</small></div></div>' +
+                    '</div>';
+                mktHtml += '<div class="row g-3 mb-3">' +
+                    '<div class="col-md-6"><div class="card h-100"><div class="card-header">Distribuzione per Tipologia (valore attuale)</div><div class="card-body"><div class="chart-container"><canvas id="anMktType"></canvas></div></div></div></div>' +
+                    '<div class="col-md-6"><div class="card h-100"><div class="card-header">Distribuzione per Settore (valore attuale)</div><div class="card-body">' +
+                    (mSector.length ? '<div class="chart-container"><canvas id="anMktSector"></canvas></div>' : '<p class="text-muted">Nessun settore definito</p>') + '</div></div></div>' +
+                    '<div class="col-md-6"><div class="card h-100"><div class="card-header">Peso per Tipologia: investito vs attuale</div><div class="card-body"><div class="chart-container"><canvas id="anCmpType"></canvas></div></div></div></div>' +
+                    '<div class="col-md-6"><div class="card h-100"><div class="card-header">Peso per Settore: investito vs attuale</div><div class="card-body">' +
+                    (mSector.length ? '<div class="chart-container"><canvas id="anCmpSector"></canvas></div>' : '<p class="text-muted">Nessun settore definito</p>') + '</div></div></div>' +
+                    '</div>';
+                mktHtml += anCmpTable('Variazione per Tipologia', 'Tipologia', mType, false);
+                if (mSector.length) mktHtml += anCmpTable('Variazione per Settore', 'Settore', mSector, false);
+                mktHtml += anCmpTable('Variazione per Investimento', 'Investimento', mkt, true);
+            }
+
+            if (analyticsView !== 'mkt') analyticsView = 'cap';
+            document.getElementById('analyticsContent').innerHTML =
+                '<div class="an-switch" role="tablist">' +
+                '<button type="button" class="period-pill' + (analyticsView === 'cap' ? ' active' : '') + '" data-view="cap" onclick="anSetView(\'cap\')"><i class="fas fa-wallet me-1"></i>Capitale investito</button>' +
+                '<button type="button" class="period-pill' + (analyticsView === 'mkt' ? ' active' : '') + '" data-view="mkt" onclick="anSetView(\'mkt\')"><i class="fas fa-arrow-trend-up me-1"></i>Valore attuale con guadagni</button>' +
+                '</div>' +
+                '<div class="an-view" data-view="cap"' + (analyticsView === 'cap' ? '' : ' hidden') + '>' + html + '</div>' +
+                '<div class="an-view" data-view="mkt"' + (analyticsView === 'mkt' ? '' : ' hidden') + '>' + mktHtml + '</div>';
 
             // Grafici
             setTimeout(() => {
@@ -1489,7 +1577,7 @@ function deleteInvestment(id) {
                             labels: Object.keys(byType),
                             datasets: [{
                                 data: Object.values(byType),
-                                backgroundColor: chartColors
+                                backgroundColor: anScriptColor
                             }]
                         },
                         options: {
@@ -1523,8 +1611,8 @@ function deleteInvestment(id) {
                             datasets: [{
                                 label: 'Importo \u20AC',
                                 data: Object.values(byType),
-                                backgroundColor: chartColors,
-                                borderColor: chartColors.map(c => c),
+                                backgroundColor: anScriptColor,
+                                borderColor: anScriptColor,
                                 borderWidth: 1
                             }]
                         },
@@ -1567,7 +1655,7 @@ function deleteInvestment(id) {
                             labels: Object.keys(bySector),
                             datasets: [{
                                 data: Object.values(bySector),
-                                backgroundColor: chartColors
+                                backgroundColor: anScriptColor
                             }]
                         },
                         options: {
@@ -1603,8 +1691,8 @@ function deleteInvestment(id) {
                             datasets: [{
                                 label: 'Importo \u20AC',
                                 data: sortedSectors.map(s => s[1]),
-                                backgroundColor: chartColors,
-                                borderColor: chartColors.map(c => c),
+                                backgroundColor: anScriptColor,
+                                borderColor: anScriptColor,
                                 borderWidth: 1
                             }]
                         },
@@ -1638,6 +1726,78 @@ function deleteInvestment(id) {
                     });
                 }
             }, 100);
+
+            // Grafici della vista "valore attuale con guadagni"
+            Object.keys(anCharts).forEach(k => { if (anCharts[k]) anCharts[k].destroy(); });
+            anCharts = {};
+            if (anSnapMap && mkt.length && window.Chart) {
+                const c = perfColors();
+                const pctTick = v => v.toLocaleString('it-IT') + '%';
+                const doughnut = (id, rows, tot) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    anCharts[id] = new Chart(el, {
+                        type: 'doughnut',
+                        data: { labels: rows.map(r => r.k), datasets: [{ data: rows.map(r => r.val), backgroundColor: anScriptColor, borderColor: c.line, borderWidth: 1 }] },
+                        options: {
+                            responsive: true, maintainAspectRatio: false, cutout: '58%',
+                            plugins: {
+                                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } },
+                                tooltip: { callbacks: { label: ctx => {
+                                    const r = rows[ctx.dataIndex];
+                                    return ctx.label + ': ' + perfMoney(r.val) + ' (' + perfPct(anW(r.val, tot)).replace('+', '') + ') · guadagno ' + perfMoney(r.val - r.cap, true);
+                                } } }
+                            }
+                        }
+                    });
+                };
+                const compare = (id, rows) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    anCharts[id] = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels: rows.map(r => r.k),
+                            datasets: [
+                                { label: 'Peso investito', data: rows.map(r => anW(r.cap, totCap) * 100), backgroundColor: perfAlpha(c.muted, 0.45), borderRadius: 6 },
+                                { label: 'Peso attuale', data: rows.map(r => anW(r.val, totVal) * 100), backgroundColor: rows.map(r => anColor(r.k)), borderRadius: 6 }
+                            ]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            scales: { y: { beginAtZero: true, ticks: { callback: pctTick }, grid: { color: c.line } }, x: { grid: { display: false } } },
+                            plugins: {
+                                legend: { labels: { usePointStyle: true, boxWidth: 8 } },
+                                tooltip: { callbacks: {
+                                    label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%',
+                                    afterBody: items => { const r = rows[items[0].dataIndex]; return 'Variazione: ' + anPP(anW(r.val, totVal) - anW(r.cap, totCap)); }
+                                } }
+                            }
+                        }
+                    });
+                };
+                doughnut('anMktType', mType, totVal);
+                doughnut('anMktSector', mSector, totVal);
+                compare('anCmpType', mType);
+                compare('anCmpSector', mSector);
+            }
+        }
+
+        // Palette coerente: la stessa voce ha sempre lo stesso colore in tutti i grafici di Analytics
+        const AN_PALETTE = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b', '#14b8a6', '#a855f7'];
+        const anColorMap = {};
+        function anColor(label) {
+            if (!(label in anColorMap)) anColorMap[label] = AN_PALETTE[Object.keys(anColorMap).length % AN_PALETTE.length];
+            return anColorMap[label];
+        }
+        function anScriptColor(ctx) { return anColor(ctx.chart.data.labels[ctx.dataIndex]); }
+
+        function anSetView(v) {
+            analyticsView = v;
+            document.querySelectorAll('#analyticsContent .an-view').forEach(el => { el.hidden = el.dataset.view !== v; });
+            document.querySelectorAll('#analyticsContent .an-switch .period-pill').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+            Object.keys(anCharts).forEach(k => { if (anCharts[k]) anCharts[k].resize(); });
         }
 
         // Funzioni per il tab Appunti
