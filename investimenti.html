@@ -137,6 +137,10 @@ body.sb-open .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.
 .perf-kpi small{display:block;margin-top:6px;color:var(--muted);font-size:.8rem}
 .perf-table tfoot td{font-weight:700;border-top:1px solid var(--line);border-bottom:0}
 .perf-table .table-active{--bs-table-bg:var(--surface2);--bs-table-color:var(--text)}
+.perf-table-wrap{max-height:450px;overflow:auto}
+.perf-table-wrap thead th{position:sticky;top:0;z-index:2;background:var(--surface)!important;box-shadow:inset 0 -1px 0 var(--line)}
+.perf-table-wrap td:first-child,.perf-table-wrap th:first-child{position:sticky;left:0;z-index:1;background:var(--surface)!important;box-shadow:inset -1px 0 0 var(--line)}
+.perf-table-wrap thead th:first-child{z-index:3;box-shadow:inset -1px -1px 0 var(--line)}
 .perf-scroll{max-height:320px;overflow:auto}
 .perf-empty{text-align:center;padding:56px 24px}
 #perfEditor>summary{cursor:pointer;list-style:none;display:flex;align-items:center}
@@ -3396,7 +3400,7 @@ scales: {
                     '</div></div>';
 
                 // ---- Tabella per investimento
-                html += '<div class="card"><div class="card-header"><h6 class="mb-0">Dettaglio per investimento</h6></div><div class="card-body p-0"><div class="table-responsive">' +
+                html += '<div class="card"><div class="card-header"><h6 class="mb-0">Dettaglio per investimento</h6></div><div class="card-body p-0"><div class="table-responsive perf-table-wrap">' +
                     '<table class="table perf-table mb-0"><thead><tr>' +
                     '<th>Investimento</th><th class="num">Valore inizio</th><th class="num">Acquisti</th><th class="num">Vendite</th><th class="num">Valore fine</th>' +
                     '<th class="num">Dividendi netti</th><th class="num">Commissioni</th><th class="num">Guadagno lordo</th><th class="num">Netto spese</th>' +
