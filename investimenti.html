@@ -3241,6 +3241,49 @@ scales: {
             return r;
         }
 
+        let perfSortCol = -1;
+        let perfSortAsc = true;
+        function perfSortTable(colIdx) {
+            const tbody = document.getElementById('perfPosTbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            if (perfSortCol === colIdx) {
+                perfSortAsc = !perfSortAsc;
+            } else {
+                perfSortCol = colIdx;
+                perfSortAsc = (colIdx === 0);
+            }
+            
+            rows.sort((a, b) => {
+                const tdA = a.children[colIdx];
+                const tdB = b.children[colIdx];
+                const vA = tdA ? tdA.getAttribute('data-val') : '';
+                const vB = tdB ? tdB.getAttribute('data-val') : '';
+                
+                if (colIdx === 0) {
+                    return perfSortAsc ? vA.localeCompare(vB) : vB.localeCompare(vA);
+                } else {
+                    const nA = parseFloat(vA) || 0;
+                    const nB = parseFloat(vB) || 0;
+                    return perfSortAsc ? nA - nB : nB - nA;
+                }
+            });
+            
+            rows.forEach(r => tbody.appendChild(r));
+            
+            const thead = document.getElementById('perfPosTable').querySelector('thead');
+            if (thead) {
+                thead.querySelectorAll('th').forEach((th, i) => {
+                    const icon = th.querySelector('i.fas');
+                    if (icon) {
+                        icon.className = 'fas ' + (i === perfSortCol ? (perfSortAsc ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort text-muted');
+                        icon.style.opacity = (i === perfSortCol) ? '1' : '0.4';
+                    }
+                });
+            }
+        }
+
         // Risolve il periodo ('all' oppure anno) in snapshot di inizio/fine e finestra delle operazioni
         function perfPeriod(y) {
             const dates = perfSnapDates();
@@ -3401,18 +3444,28 @@ scales: {
 
                 // ---- Tabella per investimento
                 html += '<div class="card"><div class="card-header"><h6 class="mb-0">Dettaglio per investimento</h6></div><div class="card-body p-0"><div class="table-responsive perf-table-wrap">' +
-                    '<table class="table perf-table mb-0"><thead><tr>' +
-                    '<th>Investimento</th><th class="num">Valore inizio</th><th class="num">Acquisti</th><th class="num">Vendite</th><th class="num">Valore fine</th>' +
-                    '<th class="num">Dividendi netti</th><th class="num">Commissioni</th><th class="num">Guadagno lordo</th><th class="num">Netto spese</th>' +
-                    '<th class="num">%</th><th class="num">Tasse ' + Math.round(TAX_RATE * 100) + '%</th><th class="num">Netto tasse</th><th class="num">%</th></tr></thead><tbody>';
+                    '<table class="table perf-table mb-0" id="perfPosTable"><thead><tr>' +
+                    '<th onclick="perfSortTable(0)" style="cursor:pointer">Investimento <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(1)" style="cursor:pointer">Valore inizio <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(2)" style="cursor:pointer">Acquisti <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(3)" style="cursor:pointer">Vendite <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(4)" style="cursor:pointer">Valore fine <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(5)" style="cursor:pointer">Dividendi netti <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(6)" style="cursor:pointer">Commissioni <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(7)" style="cursor:pointer">Guadagno lordo <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(8)" style="cursor:pointer">Netto spese <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(9)" style="cursor:pointer">% <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(10)" style="cursor:pointer">Tasse ' + Math.round(TAX_RATE * 100) + '% <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(11)" style="cursor:pointer">Netto tasse <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th>' +
+                    '<th class="num" onclick="perfSortTable(12)" style="cursor:pointer">% <i class="fas fa-sort text-muted" style="opacity:0.4"></i></th></tr></thead><tbody id="perfPosTbody">';
                 res.rows.forEach(r => {
-                    html += '<tr><td><strong>' + perfEsc(r.nome) + '</strong><div class="perf-note">' + perfEsc(r.ticker ? r.ticker + ' · ' : '') + perfEsc(r.tipologia) + '</div></td>' +
-                        '<td class="num">' + perfMoney(r.vIni) + '</td><td class="num">' + perfMoney(r.acq) + '</td><td class="num">' + perfMoney(r.vend) + '</td><td class="num">' + perfMoney(r.vFin) + '</td>' +
-                        '<td class="num">' + perfMoney(r.provNetti) + '</td><td class="num">' + perfMoney(r.comm) + '</td>' +
-                        '<td class="num ' + perfCls(r.gLordo) + '">' + perfMoney(r.gLordo, true) + '</td>' +
-                        '<td class="num ' + perfCls(r.gNet) + '"><strong>' + perfMoney(r.gNet, true) + '</strong></td><td class="num ' + perfCls(r.gNet) + '">' + perfPct(r.perc) + '</td>' +
-                        '<td class="num">' + perfMoney(-r.tax) + '</td>' +
-                        '<td class="num ' + perfCls(r.gNetTax) + '"><strong>' + perfMoney(r.gNetTax, true) + '</strong></td><td class="num ' + perfCls(r.gNetTax) + '">' + perfPct(r.percTax) + '</td></tr>';
+                    html += '<tr><td data-val="' + perfEsc(r.nome) + '"><strong>' + perfEsc(r.nome) + '</strong><div class="perf-note">' + perfEsc(r.ticker ? r.ticker + ' · ' : '') + perfEsc(r.tipologia) + '</div></td>' +
+                        '<td class="num" data-val="' + r.vIni + '">' + perfMoney(r.vIni) + '</td><td class="num" data-val="' + r.acq + '">' + perfMoney(r.acq) + '</td><td class="num" data-val="' + r.vend + '">' + perfMoney(r.vend) + '</td><td class="num" data-val="' + r.vFin + '">' + perfMoney(r.vFin) + '</td>' +
+                        '<td class="num" data-val="' + r.provNetti + '">' + perfMoney(r.provNetti) + '</td><td class="num" data-val="' + r.comm + '">' + perfMoney(r.comm) + '</td>' +
+                        '<td class="num ' + perfCls(r.gLordo) + '" data-val="' + r.gLordo + '">' + perfMoney(r.gLordo, true) + '</td>' +
+                        '<td class="num ' + perfCls(r.gNet) + '" data-val="' + r.gNet + '"><strong>' + perfMoney(r.gNet, true) + '</strong></td><td class="num ' + perfCls(r.gNet) + '" data-val="' + (r.perc||0) + '">' + perfPct(r.perc) + '</td>' +
+                        '<td class="num" data-val="' + (-r.tax) + '">' + perfMoney(-r.tax) + '</td>' +
+                        '<td class="num ' + perfCls(r.gNetTax) + '" data-val="' + r.gNetTax + '"><strong>' + perfMoney(r.gNetTax, true) + '</strong></td><td class="num ' + perfCls(r.gNetTax) + '" data-val="' + (r.percTax||0) + '">' + perfPct(r.percTax) + '</td></tr>';
                 });
                 html += '</tbody><tfoot><tr><td>Totale</td>' +
                     '<td class="num">' + perfMoney(t.vIni) + '</td><td class="num">' + perfMoney(t.acq) + '</td><td class="num">' + perfMoney(t.vend) + '</td><td class="num">' + perfMoney(t.vFin) + '</td>' +
