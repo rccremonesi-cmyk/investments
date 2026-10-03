@@ -3503,10 +3503,10 @@ scales: {
                 data: { 
                     labels: steps.map(s => s.l), 
                     datasets: [{ 
-                        data: steps.map(s => Math.abs(s.a - s.b) < 0.005 ? null : [s.a, s.b]), 
-                        backgroundColor: steps.map(s => s.col), 
-                        borderRadius: 6, 
-                        borderSkipped: false 
+                        data: steps.map(s => s.delta ? s.b - s.a : s.b), 
+                        backgroundColor: steps.map(s => s.col),
+                        borderRadius: 6,
+                        borderSkipped: false
                     }] 
                 },
                 options: Object.assign({}, baseOpts, {
